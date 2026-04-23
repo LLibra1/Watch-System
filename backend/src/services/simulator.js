@@ -104,7 +104,8 @@ class Simulator extends EventEmitter {
 
     const tokensIn  = isError ? 0 : randInt(profile.minTokensIn,  profile.maxTokensIn);
     const tokensOut = isError ? 0 : randInt(profile.minTokensOut, profile.maxTokensOut);
-
+    const ttft_ms = isError ? 0 : randInt(100, 400);
+    const tpot_ms = (isError || tokensOut === 0) ? 0 : Math.max(1, (responseTime - ttft_ms) / tokensOut);
     const errorMessages = [
       'Rate limit exceeded',
       'Context length exceeded',
@@ -117,6 +118,8 @@ class Simulator extends EventEmitter {
       model_name:       modelName,
       timestamp:        Date.now(),
       response_time_ms: responseTime,
+      ttft_ms:          ttft_ms,      // 新增
+      tpot_ms:          tpot_ms,      // 新增
       tokens_input:     tokensIn,
       tokens_output:    tokensOut,
       status:           isError ? 'error' : 'success',
@@ -135,13 +138,14 @@ class Simulator extends EventEmitter {
       displayName:  profile.displayName,
       emoji:        profile.emoji,
       responseTime,
+      ttft:         ttft_ms,            // 新增给前端 Socket 用的数据
+      tpot:         tpot_ms.toFixed(1), // 新增
       tokensIn,
       tokensOut,
       status:       record.status,
       errorMessage: record.error_message,
       timestamp:    record.timestamp,
     });
-  }
 
   _scheduleNext() {
     if (!this._running) return;
