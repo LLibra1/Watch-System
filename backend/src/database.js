@@ -29,6 +29,8 @@ db.exec(`
     model_name       TEXT NOT NULL,
     timestamp        INTEGER NOT NULL,
     response_time_ms INTEGER,
+    ttft_ms          INTEGER,   /* 新增：首字延迟 */
+    tpot_ms          REAL,      /* 新增：单Token延迟 */
     tokens_input     INTEGER,
     tokens_output    INTEGER,
     status           TEXT NOT NULL DEFAULT 'success',
@@ -65,8 +67,8 @@ seedTx();
 // ─── Prepared Statements ─────────────────────────────────────────────────────
 
 const stmtInsertRequest = db.prepare(`
-  INSERT INTO requests (model_name, timestamp, response_time_ms, tokens_input, tokens_output, status, error_message)
-  VALUES (@model_name, @timestamp, @response_time_ms, @tokens_input, @tokens_output, @status, @error_message)
+  INSERT INTO requests (model_name, timestamp, response_time_ms, ttft_ms, tpot_ms, tokens_input, tokens_output, status, error_message)
+  VALUES (@model_name, @timestamp, @response_time_ms, @ttft_ms, @tpot_ms, @tokens_input, @tokens_output, @status, @error_message)
 `);
 
 const stmtGetAllModels = db.prepare(`SELECT * FROM models ORDER BY name`);
@@ -76,6 +78,8 @@ const stmtGetModelStats = db.prepare(`
     model_name,
     COUNT(*)                                        AS total_requests,
     AVG(response_time_ms)                           AS avg_response_time,
+    AVG(ttft_ms)                                    AS avg_ttft,     /* 新增 */
+    AVG(tpot_ms)                                    AS avg_tpot,     /* 新增 */
     SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
     SUM(tokens_input)                               AS total_tokens_in,
     SUM(tokens_output)                              AS total_tokens_out
@@ -96,6 +100,8 @@ const stmtGetGlobalStats = db.prepare(`
   SELECT
     COUNT(*)                                          AS total_requests,
     AVG(response_time_ms)                             AS avg_response_time,
+    AVG(ttft_ms)                                      AS avg_ttft,   /* 新增 */
+    AVG(tpot_ms)                                      AS avg_tpot,   /* 新增 */
     SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
     SUM(tokens_input)                                 AS total_tokens_in,
     SUM(tokens_output)                                AS total_tokens_out
@@ -130,7 +136,9 @@ const stmtGetAllModelStatsRange = db.prepare(`
     AVG(response_time_ms)                             AS avg_response_time,
     SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
     SUM(tokens_input)                                 AS total_tokens_in,
-    SUM(tokens_output)                                AS total_tokens_out
+    SUM(tokens_output)                                AS total_tokens_out,
+    AVG(ttft_ms)                                      AS avg_ttft,
+    AVG(tpot_ms)                                      AS avg_tpot
   FROM requests
   WHERE timestamp >= @since
   GROUP BY model_name
@@ -143,6 +151,8 @@ function insertRequest(data) {
     model_name:       data.model_name,
     timestamp:        data.timestamp || Date.now(),
     response_time_ms: data.response_time_ms,
+    ttft_ms:          data.ttft_ms || 0,        // 新增入库映射
+    tpot_ms:          data.tpot_ms || 0.0,      // 新增入库映射
     tokens_input:     data.tokens_input,
     tokens_output:    data.tokens_output,
     status:           data.status || 'success',
