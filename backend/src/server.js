@@ -105,9 +105,10 @@ setInterval(() => {
           requests_per_min:  +(totalReq / (windowMs / 60000)).toFixed(2),
           total_tokens_in:   stats.total_tokens_in  || 0,
           total_tokens_out:  stats.total_tokens_out || 0,
+          avg_ttft:          Math.round(stats.avg_ttft || 0),
+          avg_tpot:          +(stats.avg_tpot || 0).toFixed(1),
         },
       };
-    });
 
     const totalReq = g.total_requests || 0;
     const errCount = g.error_count    || 0;
