@@ -204,7 +204,7 @@
     .status-dot.healthy   { background:var(--green); box-shadow:0 0 6px var(--green); }
     .status-dot.degraded  { background:var(--yellow); box-shadow:0 0 6px var(--yellow); }
     .status-dot.unhealthy { background:var(--red);    box-shadow:0 0 6px var(--red); }
-    .model-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .model-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; row-gap: 12px; }
     .metric-item .metric-label { font-size: 10px; color: var(--muted); text-transform:uppercase; }
     .metric-item .metric-value { font-size: 16px; font-weight: 700; margin-top: 2px; }
     .metric-item .metric-value.good    { color: var(--green); }
@@ -378,9 +378,9 @@
               <th>时间</th>
               <th>模型</th>
               <th>状态</th>
-              <th>耗时</th>
-              <th>输入 Token</th>
-              <th>输出 Token</th>
+              <th>首字(TTFT)</th>
+              <th>单字(TPOT)</th>
+              <th>总耗时</th>
             </tr>
           </thead>
           <tbody id="logBody">
@@ -532,12 +532,20 @@ function initModelGrid() {
       </div>
       <div class="model-metrics">
         <div class="metric-item">
-          <div class="metric-label">请求/分</div>
-          <div class="metric-value neutral" id="rpm-${m.name}">—</div>
+          <div class="metric-label">首字 TTFT</div>
+          <div class="metric-value good" id="ttft-${m.name}">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">输出 TPOT</div>
+          <div class="metric-value good" id="tpot-${m.name}">—</div>
         </div>
         <div class="metric-item">
           <div class="metric-label">平均延迟</div>
           <div class="metric-value good" id="latency-${m.name}">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">请求/分</div>
+          <div class="metric-value neutral" id="rpm-${m.name}">—</div>
         </div>
         <div class="metric-item">
           <div class="metric-label">错误率</div>
@@ -611,6 +619,19 @@ function updateModelCard(modelData) {
   const totEl = document.getElementById(`total-${name}`);
   if (totEl) totEl.textContent = stats.total_requests || 0;
 }
+  const ttftEl = document.getElementById(`ttft-${name}`);
+  if (ttftEl) {
+    const val = stats.avg_ttft || 0;
+    ttftEl.textContent = val + 'ms';
+    ttftEl.className = 'metric-value ' + (val > 500 ? 'danger' : val > 300 ? 'warn' : 'good');
+  }
+
+  const tpotEl = document.getElementById(`tpot-${name}`);
+  if (tpotEl) {
+    const val = stats.avg_tpot || 0;
+    tpotEl.textContent = val + 'ms';
+    tpotEl.className = 'metric-value ' + (val > 50 ? 'danger' : val > 30 ? 'warn' : 'good');
+  }
 
 // ── Log ──────────────────────────────────────────────────────────
 function formatTime(ts) {
@@ -637,9 +658,9 @@ function renderLog() {
       <td style="color:var(--muted);font-family:monospace">${formatTime(r.timestamp)}</td>
       <td>${r.emoji || ''} <strong>${r.model || r.displayName}</strong></td>
       <td><span class="status-pill ${r.status}">${r.status === 'success' ? '✓ 成功' : '✕ 失败'}</span></td>
+      <td style="font-family:monospace;color:var(--text)">${r.ttft || 0}ms</td>
+      <td style="font-family:monospace;color:var(--text)">${r.tpot || 0}ms</td>
       <td style="font-family:monospace;color:${r.responseTime > 3000 ? 'var(--red)' : r.responseTime > 1500 ? 'var(--yellow)' : 'var(--green)'}">${r.responseTime}ms</td>
-      <td style="color:var(--muted)">${r.tokensIn || 0}</td>
-      <td style="color:var(--muted)">${r.tokensOut || 0}</td>
     </tr>
   `).join('');
 }
