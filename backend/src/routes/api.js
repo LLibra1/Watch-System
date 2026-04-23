@@ -42,6 +42,8 @@ router.get('/models', (req, res) => {
         total_requests:    totalReq,
         error_count:       errCount,
         avg_response_time: Math.round(avgResp),
+        avg_ttft:          Math.round(stats.avg_ttft || 0),        // 新增
+        avg_tpot:          +(stats.avg_tpot || 0).toFixed(1),      // 新增
         error_rate:        totalReq > 0 ? +((errCount / totalReq) * 100).toFixed(2) : 0,
         requests_per_min:  +(totalReq / (windowMs / 60000)).toFixed(2),
         total_tokens_in:   stats.total_tokens_in  || 0,
