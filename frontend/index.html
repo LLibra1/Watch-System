@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 模型监控系统</title>
+  <script src="/lib/chart.umd.min.js"></script>
+  <script src="/lib/socket.io.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --surface2:  #263348;
+      --border:    #334155;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --green:     #22c55e;
+      --yellow:    #f59e0b;
+      --red:       #ef4444;
+      --blue:      #3b82f6;
+      --purple:    #a855f7;
+      --cyan:      #06b6d4;
+      --orange:    #f97316;
+      --pink:      #ec4899;
+
+      --c0: #3b82f6; --c1: #22c55e; --c2: #f59e0b; --c3: #a855f7;
+      --c4: #06b6d4; --c5: #f97316; --c6: #ec4899; --c7: #10b981;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header .subtitle { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .live-badge {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(34,197,94,0.15);
+      border: 1px solid rgba(34,197,94,0.3);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px; color: var(--green); font-weight: 600;
+    }
+    .live-dot {
+      width: 8px; height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:.5; transform:scale(1.3); }
+    }
+    .clock { font-size: 13px; color: var(--muted); font-family: monospace; }
+    .conn-status {
+      font-size: 12px; padding: 3px 10px;
+      border-radius: 12px; font-weight: 600;
+    }
+    .conn-status.connected    { background:rgba(34,197,94,.15); color:var(--green); }
+    .conn-status.disconnected { background:rgba(239,68,68,.15);  color:var(--red); }
+
+    /* ── Layout ───────────────────────────────────────────────── */
+    main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+    .section-title {
+      font-size: 13px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .8px;
+      margin-bottom: 12px; margin-top: 24px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::after {
+      content:''; flex:1; height:1px; background:var(--border);
+    }
+
+    /* ── Stat Cards ───────────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+    .stat-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:3px;
+      border-radius:12px 12px 0 0;
+    }
+    .stat-card.blue::before   { background: var(--blue); }
+    .stat-card.green::before  { background: var(--green); }
+    .stat-card.yellow::before { background: var(--yellow); }
+    .stat-card.red::before    { background: var(--red); }
+    .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing:.6px; }
+    .stat-card .value {
+      font-size: 32px; font-weight: 700; margin: 8px 0 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-card.blue   .value { color: var(--blue); }
+    .stat-card.green  .value { color: var(--green); }
+    .stat-card.yellow .value { color: var(--yellow); }
+    .stat-card.red    .value { color: var(--red); }
+    .stat-card .delta { font-size: 12px; color: var(--muted); }
+    .stat-card .icon {
+      position: absolute; right: 20px; top: 20px;
+      font-size: 28px; opacity: .15;
+    }
+
+    /* ── Charts ───────────────────────────────────────────────── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+    }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .chart-card h3 {
+      font-size: 14px; font-weight: 600; margin-bottom: 16px;
+      color: var(--text);
+    }
+    .chart-container { position: relative; }
+    .chart-container.tall { height: 260px; }
+    .chart-container.medium { height: 220px; }
+    .bar-chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .bar-chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+    .bar-chart-container { height: 280px; }
+
+    /* ── Model Cards ──────────────────────────────────────────── */
+    .model-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .model-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      transition: transform .2s, border-color .2s;
+    }
+    .model-card:hover { transform:translateY(-2px); }
+    .model-card.healthy  { border-left: 3px solid var(--green); }
+    .model-card.degraded { border-left: 3px solid var(--yellow); }
+    .model-card.unhealthy{ border-left: 3px solid var(--red); }
+    .model-card-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+    }
+    .model-card-title { display: flex; align-items: center; gap: 8px; }
+    .model-emoji { font-size: 20px; }
+    .model-name  { font-weight: 600; font-size: 14px; }
+    .model-cat   { font-size: 10px; color: var(--muted); background:var(--surface2); padding:2px 6px; border-radius:4px; }
+    .status-dot  { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .status-dot.healthy   { background:var(--green); box-shadow:0 0 6px var(--green); }
+    .status-dot.degraded  { background:var(--yellow); box-shadow:0 0 6px var(--yellow); }
+    .status-dot.unhealthy { background:var(--red);    box-shadow:0 0 6px var(--red); }
+    .model-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .metric-item .metric-label { font-size: 10px; color: var(--muted); text-transform:uppercase; }
+    .metric-item .metric-value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .metric-item .metric-value.good    { color: var(--green); }
+    .metric-item .metric-value.warn    { color: var(--yellow); }
+    .metric-item .metric-value.danger  { color: var(--red); }
+    .metric-item .metric-value.neutral { color: var(--blue); }
+    .sparkline-container { margin-top: 10px; height: 36px; }
+
+    /* ── Log & Alerts Row ─────────────────────────────────────── */
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+    }
+    .log-card, .alerts-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .log-card h3, .alerts-card h3 {
+      font-size: 14px; font-weight: 600; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .badge {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      font-weight: 700;
+    }
+    .badge.red    { background:rgba(239,68,68,.2);    color:var(--red); }
+    .badge.green  { background:rgba(34,197,94,.2);    color:var(--green); }
+    .badge.yellow { background:rgba(245,158,11,.2);   color:var(--yellow); }
+
+    .log-table-wrapper { overflow-y: auto; max-height: 280px; }
+    .log-table-wrapper::-webkit-scrollbar { width: 4px; }
+    .log-table-wrapper::-webkit-scrollbar-track { background: transparent; }
+    .log-table-wrapper::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { padding: 8px 10px; text-align: left; color: var(--muted); font-weight: 600;
+         border-bottom: 1px solid var(--border); position: sticky; top:0; background:var(--surface); font-size:11px; text-transform:uppercase; }
+    td { padding: 7px 10px; border-bottom: 1px solid rgba(51,65,85,.4); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+    .status-pill {
+      display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+    }
+    .status-pill.success { background:rgba(34,197,94,.15); color:var(--green); }
+    .status-pill.error   { background:rgba(239,68,68,.15);  color:var(--red); }
+    .log-row-new { animation: rowFlash .6s ease; }
+    @keyframes rowFlash { from { background:rgba(59,130,246,.2); } to { background:transparent; } }
+
+    /* ── Alerts ───────────────────────────────────────────────── */
+    .alert-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y:auto; }
+    .alert-item {
+      padding: 10px 14px; border-radius: 8px; font-size: 12px;
+      border-left: 3px solid;
+      animation: slideIn .3s ease;
+    }
+    @keyframes slideIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+    .alert-item.error   { background:rgba(239,68,68,.1);  border-color:var(--red);    color:var(--text); }
+    .alert-item.warning { background:rgba(245,158,11,.1); border-color:var(--yellow); color:var(--text); }
+    .alert-item .alert-msg  { font-weight: 600; margin-bottom: 3px; }
+    .alert-item .alert-time { font-size: 10px; color: var(--muted); }
+    .no-alerts {
+      text-align: center; color: var(--muted); padding: 40px 0; font-size: 13px;
+    }
+    .no-alerts .icon { font-size: 32px; margin-bottom: 8px; }
+
+    /* ── Responsive ───────────────────────────────────────────── */
+    @media (max-width: 1200px) {
+      .stats-grid      { grid-template-columns: repeat(2,1fr); }
+      .model-grid      { grid-template-columns: repeat(2,1fr); }
+    }
+    @media (max-width: 768px) {
+      .charts-row, .bottom-row { grid-template-columns: 1fr; }
+      .stats-grid, .model-grid  { grid-template-columns: repeat(2,1fr); }
+      header h1 { font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────── -->
+<header>
+  <div class="header-left">
+    <div class="header-logo">📡</div>
+    <div>
+      <h1>AI 模型监控系统</h1>
+      <div class="subtitle">Watch-System · Real-time Model Observability</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div> LIVE</div>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="conn-status disconnected" id="connStatus">⚡ 连接中…</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Stats ─────────────────────────────────────────────────── -->
+  <div class="section-title">📊 核心指标（最近1分钟）</div>
+  <div class="stats-grid">
+    <div class="stat-card blue">
+      <div class="icon">📨</div>
+      <div class="label">总请求数</div>
+      <div class="value" id="statTotalReq">0</div>
+      <div class="delta" id="statTotalReqDelta">—</div>
+    </div>
+    <div class="stat-card green">
+      <div class="icon">🤖</div>
+      <div class="label">活跃模型</div>
+      <div class="value" id="statActiveModels">0</div>
+      <div class="delta">/ 8 个模型</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="icon">⏱️</div>
+      <div class="label">平均响应时间</div>
+      <div class="value" id="statAvgResp">0<span style="font-size:16px;font-weight:400"> ms</span></div>
+      <div class="delta" id="statAvgRespDelta">—</div>
+    </div>
+    <div class="stat-card red">
+      <div class="icon">⚠️</div>
+      <div class="label">错误率</div>
+      <div class="value" id="statErrorRate">0<span style="font-size:16px;font-weight:400">%</span></div>
+      <div class="delta" id="statErrorRateDelta">—</div>
+    </div>
+  </div>
+
+  <!-- ── Charts Row ─────────────────────────────────────────────── -->
+  <div class="section-title">📈 实时图表</div>
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>🔄 请求量趋势（每分钟）</h3>
+      <div class="chart-container tall">
+        <canvas id="lineChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>🥧 请求分布</h3>
+      <div class="chart-container medium">
+        <canvas id="donutChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bar Chart ──────────────────────────────────────────────── -->
+  <div style="margin-top:16px">
+    <div class="bar-chart-card">
+      <h3>⏳ 各模型平均响应时间 (ms)</h3>
+      <div class="bar-chart-container">
+        <canvas id="barChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Model Cards ────────────────────────────────────────────── -->
+  <div class="section-title">🤖 模型状态</div>
+  <div class="model-grid" id="modelGrid">
+    <!-- populated by JS -->
+  </div>
+
+  <!-- ── Bottom Row ─────────────────────────────────────────────── -->
+  <div class="section-title" style="margin-top:24px">📋 实时日志 & 告警</div>
+  <div class="bottom-row">
+    <div class="log-card">
+      <h3>📝 请求日志 <span class="badge green" id="logCount">0</span></h3>
+      <div class="log-table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>模型</th>
+              <th>状态</th>
+              <th>耗时</th>
+              <th>输入 Token</th>
+              <th>输出 Token</th>
+            </tr>
+          </thead>
+          <tbody id="logBody">
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">等待数据…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="alerts-card">
+      <h3>🚨 告警面板 <span class="badge red" id="alertCount">0</span></h3>
+      <div class="alert-list" id="alertList">
+        <div class="no-alerts"><div class="icon">✅</div>暂无活跃告警</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────
+// Use relative URL so the frontend works regardless of deployment host/port.
+// Falls back to explicit localhost only when opened as a standalone file.
+const BACKEND = (() => {
+  const { protocol, hostname, port } = window.location;
+  return (protocol === 'file:') ? 'http://localhost:3001' : `${protocol}//${hostname}${port ? ':' + port : ''}`;
+})();
+const MODEL_COLORS = ['#3b82f6','#22c55e','#f59e0b','#a855f7','#06b6d4','#f97316','#ec4899','#10b981'];
+const MAX_LOG = 20;
+const MAX_TIME_LABELS = 12;
+
+// ── State ────────────────────────────────────────────────────────
+const state = {
+  models: [],
+  logs: [],
+  alerts: [],
+  timeLabels: [],
+  requestCounts: {},   // modelName → array of counts per time slot
+  donutData: {},       // modelName → cumulative count
+  prevStats: null,
+};
+
+// ── Clock ────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('zh-CN');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Chart Setup ──────────────────────────────────────────────────
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#334155';
+
+const lineCtx  = document.getElementById('lineChart').getContext('2d');
+const donutCtx = document.getElementById('donutChart').getContext('2d');
+const barCtx   = document.getElementById('barChart').getContext('2d');
+
+// Initialize time labels
+for (let i = MAX_TIME_LABELS - 1; i >= 0; i--) {
+  const d = new Date(Date.now() - i * 5000);
+  state.timeLabels.push(d.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }));
+}
+
+const lineChart = new Chart(lineCtx, {
+  type: 'line',
+  data: { labels: state.timeLabels, datasets: [] },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'top', labels: { boxWidth: 10, padding: 12, font: { size: 11 } } },
+      tooltip: { backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1 },
+    },
+    scales: {
+      x: { grid: { color: '#1e293b' }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+      y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } },
+    },
+    animation: { duration: 300 },
+  },
+});
+
+const donutChart = new Chart(donutCtx, {
+  type: 'doughnut',
+  data: { labels: [], datasets: [{ data: [], backgroundColor: MODEL_COLORS, borderWidth: 2, borderColor: '#1e293b', hoverOffset: 6 }] },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'right', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } },
+      tooltip: { backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1,
+        callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} 次 (${((ctx.parsed / ctx.dataset.data.reduce((a,b)=>a+b,0))*100).toFixed(1)}%)` }
+      },
+    },
+    animation: { duration: 500 },
+  },
+});
+
+const barChart = new Chart(barCtx, {
+  type: 'bar',
+  data: { labels: [], datasets: [{ label: '平均响应时间(ms)', data: [], backgroundColor: MODEL_COLORS, borderRadius: 5, borderSkipped: false }] },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    indexAxis: 'y',
+    plugins: {
+      legend: { display: false },
+      tooltip: { backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1,
+        callbacks: { label: ctx => ` ${ctx.parsed.x} ms` }
+      },
+    },
+    scales: {
+      x: { grid: { color: '#1e293b' }, beginAtZero: true,
+           ticks: { callback: v => v + 'ms' } },
+      y: { grid: { display: false }, ticks: { font: { size: 12 } } },
+    },
+    animation: { duration: 500 },
+  },
+});
+
+// ── Model Cards ──────────────────────────────────────────────────
+const MODEL_DEFS = [
+  { name:'llama2-7b',    emoji:'🦙', cat:'chat' },
+  { name:'llama2-13b',   emoji:'🦙', cat:'chat' },
+  { name:'mistral-7b',   emoji:'🌪️', cat:'chat' },
+  { name:'codellama-7b', emoji:'💻', cat:'code' },
+  { name:'phi-2',        emoji:'⚡', cat:'chat' },
+  { name:'gemma-7b',     emoji:'💎', cat:'chat' },
+  { name:'qwen-7b',      emoji:'🌏', cat:'multilingual' },
+  { name:'deepseek-7b',  emoji:'🔍', cat:'chat' },
+];
+
+function initModelGrid() {
+  const grid = document.getElementById('modelGrid');
+  grid.innerHTML = '';
+  MODEL_DEFS.forEach((m, i) => {
+    const color = MODEL_COLORS[i % MODEL_COLORS.length];
+    const card = document.createElement('div');
+    card.className = 'model-card healthy';
+    card.id = `card-${m.name}`;
+    card.innerHTML = `
+      <div class="model-card-header">
+        <div class="model-card-title">
+          <span class="model-emoji">${m.emoji}</span>
+          <div>
+            <div class="model-name">${m.name}</div>
+            <span class="model-cat">${m.cat}</span>
+          </div>
+        </div>
+        <div class="status-dot healthy" id="dot-${m.name}"></div>
+      </div>
+      <div class="model-metrics">
+        <div class="metric-item">
+          <div class="metric-label">请求/分</div>
+          <div class="metric-value neutral" id="rpm-${m.name}">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">平均延迟</div>
+          <div class="metric-value good" id="latency-${m.name}">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">错误率</div>
+          <div class="metric-value good" id="errrate-${m.name}">—</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">总请求</div>
+          <div class="metric-value neutral" id="total-${m.name}">—</div>
+        </div>
+      </div>
+      <div class="sparkline-container">
+        <canvas id="spark-${m.name}" height="36"></canvas>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  // Init sparklines
+  MODEL_DEFS.forEach((m, i) => {
+    const ctx = document.getElementById(`spark-${m.name}`).getContext('2d');
+    const color = MODEL_COLORS[i % MODEL_COLORS.length];
+    state[`spark_${m.name}`] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: new Array(10).fill(''),
+        datasets: [{ data: new Array(10).fill(0), borderColor: color, borderWidth: 1.5,
+          fill: true,
+          backgroundColor: color + '22',
+          pointRadius: 0, tension: 0.4 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display:false }, tooltip: { enabled:false } },
+        scales: { x: { display:false }, y: { display:false, beginAtZero:true } },
+        animation: { duration: 300 },
+      }
+    });
+    state.requestCounts[m.name] = new Array(MAX_TIME_LABELS).fill(0);
+  });
+}
+
+function updateModelCard(modelData) {
+  const { name, health, stats } = modelData;
+  const card = document.getElementById(`card-${name}`);
+  if (!card) return;
+
+  card.className = `model-card ${health || 'healthy'}`;
+  const dot = document.getElementById(`dot-${name}`);
+  if (dot) { dot.className = `status-dot ${health || 'healthy'}`; }
+
+  const rpm = document.getElementById(`rpm-${name}`);
+  if (rpm) {
+    rpm.textContent = (stats.requests_per_min || 0).toFixed(1);
+    rpm.className = 'metric-value neutral';
+  }
+
+  const latEl = document.getElementById(`latency-${name}`);
+  if (latEl) {
+    const ms = Math.round(stats.avg_response_time || 0);
+    latEl.textContent = ms + 'ms';
+    latEl.className = 'metric-value ' + (ms > 3000 ? 'danger' : ms > 1500 ? 'warn' : 'good');
+  }
+
+  const errEl = document.getElementById(`errrate-${name}`);
+  if (errEl) {
+    const er = stats.error_rate || 0;
+    errEl.textContent = er.toFixed(1) + '%';
+    errEl.className = 'metric-value ' + (er > 10 ? 'danger' : er > 5 ? 'warn' : 'good');
+  }
+
+  const totEl = document.getElementById(`total-${name}`);
+  if (totEl) totEl.textContent = stats.total_requests || 0;
+}
+
+// ── Log ──────────────────────────────────────────────────────────
+function formatTime(ts) {
+  return new Date(ts).toLocaleTimeString('zh-CN');
+}
+
+function addLogRow(payload) {
+  state.logs.unshift(payload);
+  if (state.logs.length > MAX_LOG) state.logs.pop();
+  renderLog();
+}
+
+function renderLog() {
+  const tbody = document.getElementById('logBody');
+  document.getElementById('logCount').textContent = state.logs.length;
+
+  if (state.logs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">等待数据…</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = state.logs.map((r, i) => `
+    <tr class="${i === 0 ? 'log-row-new' : ''}">
+      <td style="color:var(--muted);font-family:monospace">${formatTime(r.timestamp)}</td>
+      <td>${r.emoji || ''} <strong>${r.model || r.displayName}</strong></td>
+      <td><span class="status-pill ${r.status}">${r.status === 'success' ? '✓ 成功' : '✕ 失败'}</span></td>
+      <td style="font-family:monospace;color:${r.responseTime > 3000 ? 'var(--red)' : r.responseTime > 1500 ? 'var(--yellow)' : 'var(--green)'}">${r.responseTime}ms</td>
+      <td style="color:var(--muted)">${r.tokensIn || 0}</td>
+      <td style="color:var(--muted)">${r.tokensOut || 0}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Alerts ───────────────────────────────────────────────────────
+function renderAlerts() {
+  const list = document.getElementById('alertList');
+  document.getElementById('alertCount').textContent = state.alerts.length;
+
+  if (state.alerts.length === 0) {
+    list.innerHTML = '<div class="no-alerts"><div class="icon">✅</div>暂无活跃告警</div>';
+    return;
+  }
+
+  list.innerHTML = state.alerts.map(a => `
+    <div class="alert-item ${a.severity}">
+      <div class="alert-msg">${a.severity === 'error' ? '🔴' : '🟡'} ${a.message}</div>
+      <div class="alert-time">${formatTime(a.createdAt)}</div>
+    </div>
+  `).join('');
+}
+
+// ── Charts Update ────────────────────────────────────────────────
+let tickCount = 0;
+
+function addTimeSlot() {
+  const now = new Date();
+  const label = now.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  state.timeLabels.push(label);
+  if (state.timeLabels.length > MAX_TIME_LABELS) state.timeLabels.shift();
+  lineChart.data.labels = state.timeLabels;
+}
+
+function updateCharts(models) {
+  tickCount++;
+  addTimeSlot();
+
+  // Update line chart datasets
+  const existing = {};
+  lineChart.data.datasets.forEach(ds => { existing[ds.label] = ds; });
+
+  models.forEach((m, i) => {
+    const color = MODEL_COLORS[i % MODEL_COLORS.length];
+    const key = m.displayName || m.name;
+    const rpm = m.stats ? m.stats.requests_per_min || 0 : 0;
+
+    if (!existing[key]) {
+      existing[key] = {
+        label: key, data: new Array(MAX_TIME_LABELS - 1).fill(null),
+        borderColor: color, backgroundColor: color + '18',
+        borderWidth: 2, pointRadius: 2, tension: 0.4, fill: false,
+      };
+      lineChart.data.datasets.push(existing[key]);
+    }
+    existing[key].data.push(rpm);
+    if (existing[key].data.length > MAX_TIME_LABELS) existing[key].data.shift();
+  });
+
+  // Doughnut
+  const donutLabels = [];
+  const donutData = [];
+  models.forEach(m => {
+    const cnt = m.stats ? m.stats.total_requests || 0 : 0;
+    if (cnt > 0) { donutLabels.push(m.displayName || m.name); donutData.push(cnt); }
+  });
+  donutChart.data.labels = donutLabels;
+  donutChart.data.datasets[0].data = donutData;
+
+  // Bar chart
+  const barLabels = models.map(m => m.displayName || m.name);
+  const barData   = models.map(m => m.stats ? Math.round(m.stats.avg_response_time || 0) : 0);
+  barChart.data.labels = barLabels;
+  barChart.data.datasets[0].data = barData;
+  barChart.data.datasets[0].backgroundColor = MODEL_COLORS.slice(0, barData.length);
+
+  // Sparklines
+  models.forEach((m, i) => {
+    const spark = state[`spark_${m.name}`];
+    if (!spark) return;
+    const rpm = m.stats ? m.stats.requests_per_min || 0 : 0;
+    const sparkData = spark.data.datasets[0].data;
+    sparkData.push(rpm);
+    if (sparkData.length > 10) sparkData.shift();
+    spark.update('none');
+  });
+
+  lineChart.update('none');
+  donutChart.update('none');
+  barChart.update('none');
+}
+
+// ── Stat Cards ───────────────────────────────────────────────────
+function animateValue(el, newVal, suffix = '') {
+  if (!el) return;
+  const prev = parseInt(el.dataset.raw || '0', 10);
+  const steps = 20;
+  const delta = (newVal - prev) / steps;
+  let current = prev;
+  let step = 0;
+  const interval = setInterval(() => {
+    current += delta;
+    step++;
+    if (step >= steps) { current = newVal; clearInterval(interval); }
+    el.dataset.raw = newVal;
+    el.innerHTML = Math.round(current).toLocaleString() + suffix;
+  }, 15);
+}
+
+function updateStats(global) {
+  const totalEl = document.querySelector('#statTotalReq');
+  if (totalEl) animateValue(totalEl, global.total_requests || 0);
+
+  const activeEl = document.querySelector('#statActiveModels');
+  if (activeEl) { activeEl.dataset.raw = global.active_models; activeEl.textContent = global.active_models || 0; }
+
+  const respEl = document.querySelector('#statAvgResp');
+  if (respEl) {
+    const ms = global.avg_response_time || 0;
+    respEl.dataset.raw = ms;
+    respEl.innerHTML = `${ms}<span style="font-size:16px;font-weight:400"> ms</span>`;
+  }
+
+  const errEl = document.querySelector('#statErrorRate');
+  if (errEl) {
+    const er = global.error_rate || 0;
+    errEl.dataset.raw = er;
+    errEl.innerHTML = `${er.toFixed(1)}<span style="font-size:16px;font-weight:400">%</span>`;
+    errEl.closest('.stat-card').style.setProperty('--accent', er > 10 ? 'var(--red)' : 'var(--yellow)');
+  }
+}
+
+// ── Socket.IO ────────────────────────────────────────────────────
+const socket = io(BACKEND, { transports: ['websocket', 'polling'], reconnectionDelay: 2000 });
+
+socket.on('connect', () => {
+  document.getElementById('connStatus').textContent = '🟢 已连接';
+  document.getElementById('connStatus').className = 'conn-status connected';
+  console.log('[Socket.IO] Connected');
+});
+
+socket.on('disconnect', () => {
+  document.getElementById('connStatus').textContent = '🔴 已断开';
+  document.getElementById('connStatus').className = 'conn-status disconnected';
+});
+
+socket.on('init', data => {
+  console.log('[Socket.IO] Init received', data);
+});
+
+socket.on('request_completed', payload => {
+  addLogRow(payload);
+
+  // Update donut counts
+  const m = payload.model;
+  if (!state.donutData[m]) state.donutData[m] = 0;
+  state.donutData[m]++;
+});
+
+socket.on('metrics_update', data => {
+  if (data.global) updateStats(data.global);
+  if (data.models) {
+    data.models.forEach(m => updateModelCard(m));
+    updateCharts(data.models);
+  }
+});
+
+socket.on('alert_created', alert => {
+  state.alerts.unshift(alert);
+  renderAlerts();
+});
+
+socket.on('alert_resolved', resolved => {
+  state.alerts = state.alerts.filter(a => a.id !== resolved.id);
+  renderAlerts();
+});
+
+// ── Initial API Load ─────────────────────────────────────────────
+async function fetchInitialData() {
+  try {
+    const [metricsRes, alertsRes] = await Promise.all([
+      fetch(`${BACKEND}/api/metrics`),
+      fetch(`${BACKEND}/api/alerts`),
+    ]);
+    if (metricsRes.ok) {
+      const m = await metricsRes.json();
+      updateStats(m);
+    }
+    if (alertsRes.ok) {
+      const a = await alertsRes.json();
+      state.alerts = a.alerts || [];
+      renderAlerts();
+    }
+  } catch (e) {
+    console.warn('[Init] Could not fetch initial data:', e.message);
+  }
+}
+
+// ── Boot ─────────────────────────────────────────────────────────
+initModelGrid();
+fetchInitialData();
+renderAlerts();
+</script>
+</body>
+</html>
