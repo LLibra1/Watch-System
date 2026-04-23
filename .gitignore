@@ -3,3 +3,6 @@ data/
 *.db-shm
 *.db-wal
 .env
+node_modules/
+npm-debug.log*
+.DS_Store

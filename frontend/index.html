@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI 模型监控系统</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script src="/lib/chart.umd.min.js"></script>
+  <script src="/lib/socket.io.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -402,7 +402,12 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────────
-const BACKEND = 'http://localhost:3001';
+// Use relative URL so the frontend works regardless of deployment host/port.
+// Falls back to explicit localhost only when opened as a standalone file.
+const BACKEND = (() => {
+  const { protocol, hostname, port } = window.location;
+  return (protocol === 'file:') ? 'http://localhost:3001' : `${protocol}//${hostname}${port ? ':' + port : ''}`;
+})();
 const MODEL_COLORS = ['#3b82f6','#22c55e','#f59e0b','#a855f7','#06b6d4','#f97316','#ec4899','#10b981'];
 const MAX_LOG = 20;
 const MAX_TIME_LABELS = 12;

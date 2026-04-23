@@ -3,6 +3,11 @@
 const EventEmitter = require('events');
 const { insertRequest } = require('../database');
 
+// Interval range (ms) between simulated requests.
+// Keeps the simulator from running too fast or too slow for demo purposes.
+const MIN_REQUEST_DELAY_MS = 200;
+const MAX_REQUEST_DELAY_MS = 800;
+
 // Model personality profiles
 const MODEL_PROFILES = {
   'llama2-7b': {
@@ -140,7 +145,7 @@ class Simulator extends EventEmitter {
 
   _scheduleNext() {
     if (!this._running) return;
-    const delay = randInt(200, 800);
+    const delay = randInt(MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS);
     this._timer = setTimeout(() => {
       this._simulateOne();
       this._scheduleNext();

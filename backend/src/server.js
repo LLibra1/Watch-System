@@ -14,20 +14,29 @@ const alertManager = require('./services/alertManager');
 const { getAggregatedMetrics, getAllModels, getModelStats } = require('./database');
 
 const PORT = process.env.PORT || 3001;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// In production the frontend is served from the same origin, so CORS is not needed.
+// In development, restrict to localhost only (no wildcard).
+const DEV_ORIGINS = process.env.FRONTEND_ORIGIN
+  ? process.env.FRONTEND_ORIGIN.split(',').map(s => s.trim())
+  : [`http://localhost:3000`, `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
+
+const corsOptions = {
+  origin: isProduction ? false : DEV_ORIGINS,
+  methods: ['GET', 'POST'],
+};
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
-  cors: { origin: FRONTEND_ORIGIN, methods: ['GET', 'POST'] },
-});
+const io     = new Server(server, { cors: corsOptions });
 
-app.use(cors({ origin: FRONTEND_ORIGIN }));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Serve static frontend in production
-if (process.env.NODE_ENV === 'production') {
+if (isProduction) {
   app.use(express.static(path.join(__dirname, '../../frontend')));
 }
 

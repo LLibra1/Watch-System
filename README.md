@@ -2,6 +2,8 @@
 
 > 实时监控开源 AI/ML 模型调用状态的可视化仪表板
 
+![AI 模型监控系统仪表板](https://github.com/user-attachments/assets/1ba8e290-5d92-4eeb-b949-62a6374e10ce)
+
 ---
 
 ## 📋 项目概述
@@ -69,13 +71,12 @@ Watch-System 是一套针对开源 AI/ML 模型（如 LLaMA2、Mistral、CodeLla
 cd backend
 npm install
 
-# 2. 启动后端服务
-npm start
-# 或开发模式（热重载）
-npm run dev
+# 2. 生产模式启动（同时提供前端服务）
+NODE_ENV=production npm start
+# 浏览器访问: http://localhost:3001
 
-# 3. 打开前端
-open ../frontend/index.html
+# 或开发模式（仅 API，前端直接打开 frontend/index.html）
+npm run dev
 ```
 
 ### 方式二：Docker Compose
@@ -91,8 +92,9 @@ docker-compose up --build
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | PORT | 3001 | 后端监听端口 |
-| NODE_ENV | development | 运行环境 |
+| NODE_ENV | development | 运行环境（production 时同时提供前端静态文件） |
 | DB_PATH | ./data/watch.db | SQLite 数据库路径 |
+| FRONTEND_ORIGIN | localhost:3000,3001 | 开发模式允许的 CORS 来源（逗号分隔） |
 
 ---
 
@@ -105,7 +107,10 @@ Watch-System/
 ├── docs/
 │   └── project-plan.md
 ├── frontend/
-│   └── index.html
+│   ├── index.html
+│   └── lib/               # 本地 JS 库（无需 CDN）
+│       ├── chart.umd.min.js
+│       └── socket.io.min.js
 └── backend/
     ├── Dockerfile
     ├── package.json
