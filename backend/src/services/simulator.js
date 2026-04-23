@@ -146,7 +146,7 @@ class Simulator extends EventEmitter {
       errorMessage: record.error_message,
       timestamp:    record.timestamp,
     });
-
+  }
   _scheduleNext() {
     if (!this._running) return;
     const delay = randInt(MIN_REQUEST_DELAY_MS, MAX_REQUEST_DELAY_MS);
