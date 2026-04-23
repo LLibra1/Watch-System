@@ -618,7 +618,7 @@ function updateModelCard(modelData) {
 
   const totEl = document.getElementById(`total-${name}`);
   if (totEl) totEl.textContent = stats.total_requests || 0;
-}
+
   const ttftEl = document.getElementById(`ttft-${name}`);
   if (ttftEl) {
     const val = stats.avg_ttft || 0;
@@ -632,6 +632,7 @@ function updateModelCard(modelData) {
     tpotEl.textContent = val + 'ms';
     tpotEl.className = 'metric-value ' + (val > 50 ? 'danger' : val > 30 ? 'warn' : 'good');
   }
+} 
 
 // ── Log ──────────────────────────────────────────────────────────
 function formatTime(ts) {
